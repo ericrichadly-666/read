@@ -1,51 +1,50 @@
 /*
-番茄小说 2026.03.27 终极全量净化脚本 (递归扫描版)
+番茄小说 终极防复活脚本 (2026.03.27)
 */
-
 let body = $response.body;
 if (!body) $done({});
 let obj = JSON.parse(body);
 
-// 1. 深度递归清理函数：自动识别并删除所有层级中的广告、视频、奖励等字段
-function deepClean(data) {
-    const adKeywords = ["ad_info", "video_ad", "pangle", "reward", "extra", "dialog_info", "splash", "ad_config", "interstitial", "report_ad", "click_url"];
-    
+// 1. 全局深度递归清理广告特征
+function deepPurge(data) {
+    const keys = ["ad_info", "video_ad", "pangle", "reward", "extra", "dialog_info", "splash", "ad_config", "interstitial", "report_ad", "click_url"];
     if (Array.isArray(data)) {
         for (let i = data.length - 1; i >= 0; i--) {
-            if (shouldDelete(data[i], adKeywords)) data.splice(i, 1);
-            else deepClean(data[i]);
+            if (isAd(data[i])) data.splice(i, 1);
+            else deepPurge(data[i]);
         }
     } else if (data && typeof data === 'object') {
         for (let key in data) {
-            // 如果键名包含广告关键字，或者值里包含广告特征，直接删除该键
-            if (adKeywords.some(k => key.toLowerCase().includes(k)) || shouldDelete(data[key], adKeywords)) {
+            if (keys.some(k => key.toLowerCase().includes(k)) || isAd(data[key])) {
                 delete data[key];
             } else {
-                deepClean(data[key]);
+                deepPurge(data[key]);
             }
         }
     }
 }
 
-function shouldDelete(val, keywords) {
+function isAd(val) {
     if (!val) return false;
-    let str = JSON.stringify(val).toLowerCase();
-    // 识别字节跳动特有的广告标识符
-    return keywords.some(k => str.includes(k)) || str.includes("banner_ad") || str.includes("feed_ad");
+    let s = JSON.stringify(val).toLowerCase();
+    return s.includes("ad/params") || s.includes("is_ad") || s.includes("pangle") || s.includes("video_ads");
 }
 
-// 2. 强制身份注入：确保 App 认为你是 VIP 且设置了无广告模式
+// 2. 强行锁定 VIP 和无广告状态
 if (obj.data) {
     obj.data.no_ad = true;
     obj.data.is_vip = true;
     obj.data.status = 1;
+    // 覆盖阅读器内部配置
     if (obj.data.settings) {
         obj.data.settings.no_ad = true;
         obj.data.settings.is_vip = true;
     }
+    // 针对章节信息的广告清除
+    if (obj.data.chapter_info) {
+        obj.data.chapter_info.ad_info = null;
+    }
 }
 
-// 3. 执行全量清理
-deepClean(obj);
-
+deepPurge(obj);
 $done({ body: JSON.stringify(obj) });
